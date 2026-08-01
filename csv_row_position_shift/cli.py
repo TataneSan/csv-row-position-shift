@@ -1,41 +1,55 @@
-"""csv_row_position_shift - rotate CSV rows by N positions with wrap-around.
+"""csv-row-position-shift: rotate CSV data rows by N positions (wrap-around).
+
+Reads from a file argument or stdin when FILE is omitted or "-".
+The header row (unless --no-header) stays in place; only data rows rotate.
 
 Exit codes:
-    0 - success
-    1 - I/O or CLI error
-    2 - --check failed (rows are not in the requested shifted order)
+    0 success
+    1 CLI or I/O error
+    2 --check condition not satisfied
 """
+
 import argparse
 import csv
+import io
 import json
 import sys
 
 
-def _open(path):
-    if path in (None, "-"):
-        return sys.stdin
-    return open(path, newline="", encoding="utf-8")
+def build_parser():
+    p = argparse.ArgumentParser(
+        prog="csv-row-position-shift",
+        description="Shift CSV data rows by N positions with wrap-around.",
+    )
+    p.add_argument("file", nargs="?", default="-", help="CSV file (default: stdin)")
+    p.add_argument("-n", "--shift", type=int, default=1,
+                   help="positions to shift (negative = backwards, default 1)")
+    p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default: comma)")
+    p.add_argument("--no-header", action="store_true", help="treat the first line as data")
+    p.add_argument("--check", metavar="FIRST-KEY", default=None,
+                   help="exit 2 unless the first data column of the first row matches FIRST-KEY after shifting")
+    p.add_argument("--json", action="store_true", help="print a JSON report instead of the CSV")
+    return p
+
+
+def read_input(path):
+    if path == "-":
+        return sys.stdin.read()
+    with open(path, newline="", encoding="utf-8") as fh:
+        return fh.read()
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(
-        prog="csv-row-position-shift",
-        description="Shift (rotate) the data rows of a CSV by N positions with wrap-around.")
-    p.add_argument("csv", nargs="?", default="-", help="CSV file (default: stdin)")
-    p.add_argument("--shift", type=int, required=True,
-                   help="positions to shift (positive moves down, negative moves up)")
-    p.add_argument("--no-header", action="store_true", help="input has no header row")
-    p.add_argument("--check", action="store_true",
-                   help="exit 2 if rows are not already in the shifted order")
-    p.add_argument("--json", action="store_true", help="report as JSON")
-    p.add_argument("-q", "--quiet", action="store_true",
-                   help="suppress transformed output in --check mode")
-    args = p.parse_args(argv)
+    args = build_parser().parse_args(argv)
+    try:
+        text = read_input(args.file)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
-    with _open(args.csv) as fh:
-        rows = list(csv.reader(fh))
+    rows = list(csv.reader(io.StringIO(text), delimiter=args.delimiter))
     if not rows:
-        print("error: empty CSV", file=sys.stderr)
+        print("error: empty input", file=sys.stderr)
         return 1
 
     if args.no_header:
@@ -43,30 +57,34 @@ def main(argv=None):
     else:
         header, data = rows[0], rows[1:]
 
-    n = len(data)
-    shift = args.shift % n if n else 0
-    shifted = data[-shift:] + data[:-shift] if shift else list(data)
-    already = shifted == data
+    if data:
+        k = args.shift % len(data)
+        shifted = data[-k:] + data[:-k] if k else list(data)
+    else:
+        shifted = []
 
-    report = {"ok": already, "rows": n, "shift": args.shift,
-              "effective_shift": shift}
+    ok = True
+    if args.check is not None:
+        ok = bool(shifted) and shifted[0] and shifted[0][0] == args.check
+
+    report = {
+        "file": args.file,
+        "shift": args.shift,
+        "totalRows": len(data),
+        "firstRowKey": shifted[0][0] if shifted and shifted[0] else None,
+        "check": args.check,
+        "ok": ok,
+    }
+
     if args.json:
-        print(json.dumps(report, indent=2, ensure_ascii=False))
-
-    if args.check:
-        if already:
-            return 0
-        if not args.json:
-            print("rows are not in the requested shifted order", file=sys.stderr)
-        return 2
-
-    if not args.quiet:
-        w = csv.writer(sys.stdout)
+        print(json.dumps(report, indent=2))
+    else:
+        out = csv.writer(sys.stdout)
         if header is not None:
-            w.writerow(header)
-        for row in shifted:
-            w.writerow(row)
-    return 0
+            out.writerow(header)
+        out.writerows(shifted)
+
+    return 0 if ok else 2
 
 
 if __name__ == "__main__":

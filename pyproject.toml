@@ -5,14 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "csv-row-position-shift"
 version = "1.0.0"
-description = "Shift (rotate) the data rows of a CSV by N positions with wrap-around."
+description = "Shift CSV data rows by N positions with wrap-around (header preserved)."
 readme = "README.md"
-requires-python = ">=3.9"
 license = {text = "MIT"}
-authors = [{name = "TataneSan"}]
+requires-python = ">=3.9"
 
 [project.scripts]
 csv-row-position-shift = "csv_row_position_shift.cli:main"
-
-[tool.setuptools.packages.find]
-include = ["csv_row_position_shift*"]
