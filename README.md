@@ -10,8 +10,10 @@ Shift (rotate) the data rows of a CSV file by N positions, with wrap-around. Pos
 - Shift by any integer - wraps around modulo the row count
 - Negative shifts supported (rotate the other way)
 - Header preserved by default, `--no-header` available
-- `--check` CI mode: exit 2 when rows are not already in the shifted order
+- `--check` CI mode: exit 2 when applying `--shift` would change the document
 - `--json` machine-readable report
+
+Note on `--check` semantics: since rotation is always self-consistent for any input, the check answers "does `--shift N` still have an effect on this document?" Exit 0 means the document is invariant under the rotation; exit 2 means applying the rotation would reorder rows.
 
 ## Installation
 
